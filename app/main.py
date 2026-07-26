@@ -1,19 +1,40 @@
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from contextlib import asynccontextmanager
 
-from .detector import detect
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="SmartMeal API")
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+from .core.config import settings
+from .core.database import close_client, ensure_indexes
+from .controllers import api_router
 
 
-@app.post("/detect")
-async def detect_ingredients(file: UploadFile = File(...), conf: float = 0.25):
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Tạo index (vd email unique) nếu MongoDB sẵn sàng; lỗi kết nối không
+    # được chặn app khởi động (kết nối là lazy).
     try:
-        items = detect(await file.read(), conf=conf)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"ingredients": items}
+        ensure_indexes()
+    except Exception:
+        pass
+    yield
+    close_client()
+
+
+def create_app() -> FastAPI:
+    app = FastAPI(
+        title=settings.APP_NAME,
+        version=settings.APP_VERSION,
+        lifespan=lifespan,
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    app.include_router(api_router)
+    return app
+
+
+app = create_app()

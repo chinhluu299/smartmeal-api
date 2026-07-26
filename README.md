@@ -13,10 +13,15 @@ pip install -r requirements.txt
 ## Chạy
 
 ```bash
-uvicorn app.main:app --reload
+# Bind 0.0.0.0 để điện thoại / emulator cùng mạng có thể kết nối
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Mở docs: http://127.0.0.1:8000/docs
+
+> App mobile cấu hình host backend trong `smartmeal/api/axiosClient.js`
+> (mặc định IP LAN, hoặc đặt biến `EXPO_PUBLIC_API_URL`). Thiết bị thật phải
+> cùng Wi-Fi với máy chạy backend.
 
 ## API
 

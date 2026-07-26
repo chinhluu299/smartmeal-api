@@ -3,3 +3,9 @@ uvicorn[standard]
 python-multipart
 ultralytics
 opencv-python-headless
+requests
+python-dotenv
+pymongo[srv]
+certifi
+bcrypt
+email-validator
