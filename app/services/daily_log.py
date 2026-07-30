@@ -11,6 +11,8 @@ from bson import ObjectId
 from ..core.database import get_users_collection
 from .user import UserError, serialize_user, get_user_by_id
 
+MEALS = ("breakfast", "lunch", "dinner")
+
 
 def _new_daily_log(date: str, user: dict) -> dict:
     """Tạo một log rỗng cho `date`, chốt sẵn mục tiêu theo user hiện tại."""
@@ -38,6 +40,32 @@ def _new_daily_log(date: str, user: dict) -> dict:
     }
 
 
+def _recompute_totals(log: dict, user: dict) -> None:
+    """Tính lại intake/remain của `log` từ chính các món đang có trong 3 bữa.
+
+    Cộng dồn khi thêm rồi trừ dần khi xoá sẽ tích luỹ sai số dấu phẩy động và
+    không tự sửa được nếu một lần ghi nào đó lệch; tính lại từ mảng món luôn
+    cho ra con số khớp với những gì nhật ký đang hiển thị.
+    """
+    totals = {"ENERC_KCAL": 0.0, "PROCNT": 0.0, "CHOCDF": 0.0, "FAT": 0.0}
+    for meal in MEALS:
+        for item in log.get(meal) or []:
+            nutrients = item.get("nutrients") or {}
+            for key in totals:
+                totals[key] += nutrients.get(key, 0) or 0
+
+    log["caloric_intake"] = totals["ENERC_KCAL"]
+    log["protein_intake"] = totals["PROCNT"]
+    log["carb_intake"] = totals["CHOCDF"]
+    log["fat_intake"] = totals["FAT"]
+
+    # Lượng còn lại so với mục tiêu (không âm).
+    log["caloric_remain"] = max(0.0, user.get("caloric_intake_goal", 0.0) - log["caloric_intake"])
+    log["protein_remain"] = max(0.0, user.get("daily_protein_goal", 0.0) - log["protein_intake"])
+    log["carb_remain"] = max(0.0, user.get("daily_carb_goal", 0.0) - log["carb_intake"])
+    log["fat_remain"] = max(0.0, user.get("daily_fat_goal", 0.0) - log["fat_intake"])
+
+
 def add_food_to_daily_log(user_id: str, date: str, food_item: dict, meal: str) -> dict:
     """Thêm 1 món vào bữa `meal` của ngày `date`, cập nhật intake/remain.
 
@@ -52,20 +80,46 @@ def add_food_to_daily_log(user_id: str, date: str, food_item: dict, meal: str) -
         log = _new_daily_log(date, user)
         daily_logs.append(log)
 
-    nutrients = food_item.get("nutrients", {}) or {}
-    log[meal].append(food_item)
+    log.setdefault(meal, []).append(food_item)
+    _recompute_totals(log, user)
 
-    # Cộng dồn lượng nạp vào.
-    log["caloric_intake"] += nutrients.get("ENERC_KCAL", 0) or 0
-    log["protein_intake"] += nutrients.get("PROCNT", 0) or 0
-    log["carb_intake"] += nutrients.get("CHOCDF", 0) or 0
-    log["fat_intake"] += nutrients.get("FAT", 0) or 0
+    get_users_collection().update_one(
+        {"_id": ObjectId(user_id)}, {"$set": {"daily_logs": daily_logs}}
+    )
+    user["daily_logs"] = daily_logs
+    return serialize_user(user)
 
-    # Tính lại lượng còn lại so với mục tiêu (không âm).
-    log["caloric_remain"] = max(0.0, user.get("caloric_intake_goal", 0.0) - log["caloric_intake"])
-    log["protein_remain"] = max(0.0, user.get("daily_protein_goal", 0.0) - log["protein_intake"])
-    log["carb_remain"] = max(0.0, user.get("daily_carb_goal", 0.0) - log["carb_intake"])
-    log["fat_remain"] = max(0.0, user.get("daily_fat_goal", 0.0) - log["fat_intake"])
+
+def remove_food_from_daily_log(
+    user_id: str, date: str, meal: str, index: int, label: str | None = None
+) -> dict:
+    """Xoá món thứ `index` khỏi bữa `meal` của ngày `date`, tính lại intake/remain.
+
+    `index` là vị trí trong mảng bữa ăn - đúng thứ tự client đang hiển thị. Nếu
+    client gửi kèm `label`, tên phải khớp với món ở vị trí đó thì mới xoá: danh
+    sách có thể đã đổi (thêm món từ thiết bị khác) giữa lúc màn hình render và
+    lúc bấm xoá, và xoá nhầm món thì không khôi phục lại được.
+    Trả về user đã serialize, giống `add_food_to_daily_log`.
+    """
+    user = get_user_by_id(user_id)
+    daily_logs = user.get("daily_logs", [])
+
+    log = next((dl for dl in daily_logs if dl.get("date") == date), None)
+    if log is None:
+        raise UserError("Không tìm thấy nhật ký của ngày này", 404)
+
+    items = log.get(meal) or []
+    if index < 0 or index >= len(items):
+        raise UserError("Món cần xoá không còn trong nhật ký", 404)
+
+    if label is not None and (items[index].get("label") or "") != label:
+        raise UserError(
+            "Nhật ký đã thay đổi, hãy tải lại rồi xoá lại cho đúng món", 409
+        )
+
+    items.pop(index)
+    log[meal] = items
+    _recompute_totals(log, user)
 
     get_users_collection().update_one(
         {"_id": ObjectId(user_id)}, {"$set": {"daily_logs": daily_logs}}

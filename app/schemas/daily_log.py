@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .user import Food
 
@@ -12,6 +12,16 @@ class AddFoodIn(BaseModel):
 
     food_item: Food
     meal: Literal["breakfast", "lunch", "dinner"]
+
+
+class RemoveFoodIn(BaseModel):
+    """Xoá một món khỏi bữa ăn của một ngày, theo vị trí trong danh sách."""
+
+    meal: Literal["breakfast", "lunch", "dinner"]
+    index: int = Field(ge=0)
+    # Tên món client đang hiển thị ở vị trí đó. Không bắt buộc, nhưng nếu có thì
+    # server đối chiếu trước khi xoá để không xoá nhầm khi danh sách đã đổi.
+    label: str | None = None
 
 
 class WorkoutLogItem(BaseModel):

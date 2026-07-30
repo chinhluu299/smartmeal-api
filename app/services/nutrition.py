@@ -12,22 +12,10 @@ Sau khi có per-100g, nếu nguyên liệu đã được ước lượng khối 
 import requests
 
 from ..core.config import settings
+from .labels import canonical, edamam_query
 
 # 5 chỉ số Edamam trả về, trùng đúng bộ khoá mà schema Food/daily_log đang dùng.
 NUTRIENT_KEYS = ("ENERC_KCAL", "PROCNT", "FAT", "CHOCDF", "FIBTG")
-
-# Vài tên class của model không khớp tên thực phẩm chuẩn của Edamam -> ánh xạ
-# sang tên tiếng Anh phổ thông để parser tra trúng hơn.
-NAME_ALIASES = {
-    "Brinjal": "eggplant",
-    "Calabash": "bottle gourd",
-    "Capsicum": "bell pepper",
-    "Green Chili": "green chili pepper",
-    "Lady finger": "okra",
-    "Sponge Gourd": "ridge gourd",
-    "Bitter melon": "bitter gourd",
-    "oren": "orange",  # trùng lặp/typo của 'orange'
-}
 
 # Cache theo tên (lower-case). Giá trị None = đã tra nhưng không có dữ liệu,
 # để khỏi gọi lại API cho cùng một tên tra hụt.
@@ -69,11 +57,17 @@ def _query_edamam(name: str) -> dict | None:
 
 
 def nutrients_per_100g(name: str) -> dict | None:
-    """Trả dict 5 chỉ số per-100g cho `name` (None nếu không tra được)."""
-    key = name.strip().lower()
+    """Trả dict 5 chỉ số per-100g cho `name` (None nếu không tra được).
+
+    `name` được đưa về bộ tên chung ở `labels.py` trước khi tra: tên lớp thô của
+    các mô hình (kèm tên địa phương, tên vùng miền, lỗi chính tả) không phải tên
+    thực phẩm mà Edamam nhận diện được. Với món Việt còn phải đổi sang chuỗi mô tả
+    tiếng Anh vì Edamam chỉ hỗ trợ tiếng Anh (xem `labels.EDAMAM_QUERY`).
+    """
+    key = canonical(name)
     if key in _cache:
         return _cache[key]
-    result = _query_edamam(NAME_ALIASES.get(name, name))
+    result = _query_edamam(edamam_query(key))
     _cache[key] = result
     return result
 

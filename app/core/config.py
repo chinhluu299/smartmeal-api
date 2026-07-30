@@ -18,12 +18,18 @@ class Settings:
     APP_NAME: str = "SmartMeal API"
     APP_VERSION: str = "1.0.0"
 
-    # Model nhận diện nguyên liệu
+    # Model nhận diện nguyên liệu chính: 120 class, bản tự huấn luyện mới nhất.
     MODEL_PATH: Path = BASE_DIR / "model" / "best.pt"
     DEFAULT_CONF: float = float(os.getenv("DETECT_CONF", "0.25"))
 
-    # Model gốc (chưa fine-tune, còn giữ 80 class MS-COCO) - dùng để tìm vật
-    # tham chiếu (thìa/nĩa/dao/cốc/bát) quy đổi tỷ lệ pixel -> cm.
+    # Model của dự án Nutrition-Warrior (YOLOv8n, 90 class). Chạy song song vì
+    # phủ được nhóm trái cây phổ thông, nhóm món phương Tây và 10 MÓN VIỆT
+    # (phở, bánh mì, bún bò Huế, cơm tấm...) mà bộ 120 class không có.
+    NW_MODEL_PATH: Path = BASE_DIR / "model" / "nw-90class.pt"
+
+    # Model gốc (chưa fine-tune, còn giữ 80 class MS-COCO) - dùng cho 2 việc:
+    # tìm vật tham chiếu (thìa/nĩa/dao/cốc/bát) để quy đổi tỷ lệ pixel -> cm,
+    # và bổ sung 10 class thực phẩm của COCO.
     REFERENCE_MODEL_PATH: Path = BASE_DIR / "model" / "reference.pt"
 
     # ExerciseDB (RapidAPI) - dùng cho module tập luyện
